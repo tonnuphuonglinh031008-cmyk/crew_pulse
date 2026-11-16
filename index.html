@@ -212,6 +212,10 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .ht-stat b{font-size:22px;color:var(--navy);display:flex;align-items:center;gap:8px}
 .ht-stat span{font-size:12.5px;color:var(--grey)}
 .ht-dot{width:12px;height:12px;border-radius:4px;display:inline-block;flex:none}
+.m-err{display:block;font-size:12.5px;margin-top:4px;min-height:0}
+.tbl-scroll{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
+.tbl-scroll>.tbl{min-width:560px}
+.workspace{min-width:0}
 .login-hint{display:flex;gap:10px;align-items:flex-start;background:#EEF4FB;border:1px solid #D3E2F3;border-radius:12px;padding:10px 12px;margin:14px 0 4px;font-size:13.5px;color:var(--navy);line-height:1.45}
 .login-hint svg{flex:none;margin-top:1px;color:var(--indigo)}
 .guest-cta{width:100%;margin-top:22px;display:flex;align-items:center;gap:14px;padding:16px 18px;border-radius:16px;border:0;background:var(--navy);color:#fff;text-align:left;cursor:pointer;font:inherit;box-shadow:0 10px 24px -12px rgba(33,39,61,.6);transition:transform .15s,box-shadow .15s}
@@ -650,6 +654,7 @@ h3 .info-btn{width:24px;height:24px;margin-left:4px}
   .h-right{gap:8px}
   .hdr-help{display:none}
   .fab{display:inline-flex}
+  .workspace{padding-bottom:calc(46px + 22px + 24px)}
   .workspace{padding:16px 14px 96px}
   .welcome .spacer+span{display:none}
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -701,7 +706,7 @@ h2{letter-spacing:-.015em}
 .page-head{margin-bottom:24px}
 @media (max-width:1180px) and (min-width:901px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.kpi-hero{grid-column:span 3}}
 @media (max-width:900px){
-  .workspace{padding:18px 16px 100px}
+  .workspace{padding:18px 16px calc(46px + 22px + 24px)}
   h1{font-size:22px}
   .card{padding:18px;border-radius:18px}
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:20px}
@@ -846,7 +851,7 @@ const staffWho = () => S.role === 'fs' ? FS : MO;
 const CREW = {
   A:{id:'A', name:'Astronaut A', user:'astronaut.a', crewId:'CP-A01', role:'Flight Engineer', env:'station', phase:'Long-duration operations', day:124, seed:11,
      base:{hr:62, sys:118, dia:76, temp:36.8, sleep:7.5, glu:95, mood:4}, exercise:'74 min'},
-  B:{id:'B', name:'Astronaut B', user:'astronaut.b', crewId:'CP-B02', role:'Mission Commander', env:'transit', phase:'Outbound cruise', day:38, seed:23,
+  B:{id:'B', name:'Astronaut B', user:'astronaut.b', crewId:'CP-B02', role:'Mission Commander', env:'transit', phase:'Outbound cruise', day:124, seed:23,
      base:{hr:74, sys:122, dia:80, temp:36.7, sleep:6.8, glu:101, mood:4}, exercise:'45 min'},
   C:{id:'C', name:'Astronaut C', user:'astronaut.c', crewId:'CP-C03', role:'Mission Specialist — Surface Science', env:'base', phase:'Surface operations', day:212, seed:37,
      base:{hr:68, sys:115, dia:74, temp:36.9, sleep:7.1, glu:92, mood:3}, exercise:'52 min'}
@@ -1224,7 +1229,7 @@ function entryBlock(e){
     ${e.msg ? `<p style="margin-top:6px">${e.msg}</p>` : ''}${envLine('urgent')}${(e.steps && e.steps.length) || extra.length ? `<p class="small" style="margin-top:8px;font-weight:600">While you wait for help:</p>${stepList(e, extra)}` : ''}${cardBtn(e.key)}</div>`;
   if (e.level === 'review') return `<div class="sc-item review"><h3>${icon('message', 17)} Contact the medical officer today: ${e.title.toLowerCase()}</h3>
     <p class="small" style="margin-top:6px">This is not an emergency, but it should be looked at. Meanwhile:</p>${stepList(e, extra)}${envLine('review')}
-    <p class="sc-when">${icon('alert', 15)}<span>Contact them straight away if ${e.when}</span></p>${cardBtn(e.key)}</div>`;
+    <p class="sc-when">${icon('alert', 15)}<span>Contact them straight away if ${e.when}</span></p>${e.key === 'x-breath' ? '' : cardBtn(e.key)}</div>`;
   return `<div class="sc-item"><h3>${icon('ok', 17)} Things you can do now: ${e.title.toLowerCase()}</h3>
     ${stepList(e, extra)}
     <p class="sc-when">${icon('message', 15)}<span>Contact the medical officer if ${e.when}</span></p></div>`;
@@ -1349,7 +1354,46 @@ function exSeries(id){
     d[N - 1] = b; EXDATA[id] = d; }
   return EXDATA[id];
 }
+/* ---------- One shared classifier: status text + severity for a reading (used by every screen) ---------- */
+const LV_OF = {ok:'clear', amber:'review', red:'urgent', grey:'clear'};
+const VITAL_KEYS = ['hr','sys','dia','bp','temp','glu','sleep'];
+function classify(id, key, v){
+  const b = CREW[id].base, R = (k, t, sh) => ({k, t, s: sh || t, level: LV_OF[k]});
+  if (key === 'sys' || key === 'dia' || key === 'bp') {   // blood pressure is judged on BOTH numbers
+    const sy = Array.isArray(v) ? v[0] : cur(id,'sys'), di = Array.isArray(v) ? v[1] : cur(id,'dia');
+    if (sy == null || di == null) return R('grey','Unavailable');
+    if (sy >= T.bp.sysHigh || di >= T.bp.diaHigh) return R('red','Very high blood pressure','Very high');
+    if (sy < 90 || di < 60) return R('amber','Low blood pressure','Low');
+    if (sy - b.sys > T.bp.sys || di - b.dia > T.bp.dia) return R('amber','Higher than your baseline','▲ above');
+    if (b.sys - sy > T.bp.sys || b.dia - di > T.bp.dia) return R('amber','Lower than your baseline','▼ below');
+    return R('ok','Within your usual range');
+  }
+  if (v === undefined) v = key === 'sleep' ? sleepEff(id) : cur(id, key);
+  if (v == null) return R('grey','Unavailable');
+  const d = v - b[key], tol = TOL(id, key);
+  const dev = () => Math.abs(d) <= tol ? R('ok','Within your usual range') : d > 0 ? R('amber','Higher than your baseline','▲ above') : R('amber','Lower than your baseline','▼ below');
+  if (key === 'hr') { if (v >= T.hr.high || v <= T.hr.low) return R('red','Heart rate outside the safe range','Unsafe'); if (d > tol && takes(id, 'hr')) return R('red','Fast heart rate despite your heart-rate medicine','▲ above'); }
+  if (key === 'temp') { if (v >= T.temp.high) return R('red','High fever'); if (v >= T.temp.fever) return R('amber','Fever'); if (v <= T.temp.low) return R('amber','Low body temperature','Low'); }
+  if (key === 'glu') { if (v < 54) return R('red','Very low glucose','Very low'); if (v < T.glu.low) return R(takes(id, 'glu') ? 'red' : 'amber','Low glucose','Low'); if (v > T.glu.high) return R('amber','High glucose','High'); }
+  if (key === 'sleep' && v < T.sleep.short) return R('amber','Short sleep','Short');
+  return dev();
+}
+/* Item 3: readings entered with Measure are labelled "Measured by you" */
+const MKEY = k => ({sys:'bp', dia:'bp'}[k] || k);
+const isMeasured = (id, k) => !!((S.measured[id] || {})[MKEY(k)]);
+const srcTag = (id, k, fallback) => sim(isMeasured(id, k) ? 'Measured by you' : fallback);
+/* Item 5: the Daily Check sleep answer vs the wearable */
+const SLEEP_RANGE = {[SLEEPS[0]]:[0, 4, 3.5], [SLEEPS[1]]:[4, 6, 5], [SLEEPS[2]]:[6, 8, 7], [SLEEPS[3]]:[8, 24, 9]};
+function sleepMismatch(id, t = S.today[id]){
+  if (!t || !SLEEP_RANGE[t.sleep]) return null;
+  const w = cur(id, 'sleep'); if (w == null) return null;
+  const [lo, hi] = SLEEP_RANGE[t.sleep];
+  return w < lo || w > hi ? {answer: t.sleep, wear: w} : null;
+}
+const sleepEff = id => { const m = sleepMismatch(id); return m ? SLEEP_RANGE[m.answer][2] : cur(id, 'sleep'); };
+const sleepNote = m => `You reported ${m.answer.toLowerCase()}, but the wearable shows ${m.wear} hours. Is the sensor loose?`;
 function cmp(id, key){
+  if (VITAL_KEYS.includes(key)) return classify(id, key);
   const b = CREW[id].base, v = cur(id, key);
   if (v == null) return {k:'grey', t:'Unavailable'};
   const tol = TOL(id, key);
@@ -1368,11 +1412,12 @@ const sensorVal = (id, k) => S.sim[id][k] ?? ENVS[S.env[id]].sensors[k];
 function sensorSignals(id){
   const b = CREW[id].base, e = ENVS[S.env[id]], v = envVals(id), sg = {};
   const hr = cur(id,'hr'), sy = cur(id,'sys'), di = cur(id,'dia'), t = cur(id,'temp'), sl = cur(id,'sleep'), g = cur(id,'glu');
-  if (hr != null) { if (hr >= T.hr.high || hr <= T.hr.low) sg.hrhigh = ['urgent', `Heart rate ${hr} bpm (your baseline ${b.hr})`]; else if (hr > b.hr * (1 + T.hr.pct / 100)) sg.hrhigh = [takes(id, 'hr') ? 'urgent' : 'review', `Heart rate ${hr} bpm (your baseline ${b.hr})${takes(id, 'hr') ? ' despite heart-rate-lowering medicine' : ''}`]; }
-  if (sy != null && (sy >= T.bp.sysHigh || di >= T.bp.diaHigh)) sg.bphigh = ['urgent', `Blood pressure ${sy}/${di} mmHg`]; else if (sy != null && (sy - b.sys > T.bp.sys || di - b.dia > T.bp.dia)) sg.bphigh = ['review', `Blood pressure ${sy}/${di} mmHg (your baseline ${b.sys}/${b.dia})`];
-  if (t != null) { if (t >= T.temp.high) sg.fever = ['urgent', `Body temperature ${t} °C`]; else if (t >= T.temp.fever) sg.fever = ['review', `Body temperature ${t} °C`]; else if (t <= T.temp.low) sg.lowtemp = ['review', `Body temperature ${t} °C`]; }
-  if (sl != null && sl < T.sleep.short) sg.sleepshort = ['review', `Sleep ${sl} hours (your baseline ${b.sleep})`];
-  if (g != null && g < T.glu.low) sg.glulow = ['review', `Glucose ${g} mg/dL`];
+  const vc = k => classify(id, k), lab = (c, txt) => `${c.t} — ${txt}`;
+  if (hr != null) { const c = vc('hr'); if (c.level !== 'clear') sg[hr > b.hr ? 'hrhigh' : 'hrlow'] = [c.level, lab(c, `Heart rate ${hr} bpm (your baseline ${b.hr})${takes(id, 'hr') && hr > b.hr ? ' despite heart-rate-lowering medicine' : ''}`)]; }
+  if (sy != null && di != null) { const c = vc('bp'); if (c.level !== 'clear') sg[c.s === 'Very high' || c.s === '▲ above' ? 'bphigh' : 'bplow'] = [c.level, lab(c, `Blood pressure ${sy}/${di} mmHg (your baseline ${b.sys}/${b.dia})`)]; }
+  if (t != null) { const c = vc('temp'); if (c.level !== 'clear') sg[/fever/i.test(c.t) ? 'fever' : c.t === 'Low body temperature' ? 'lowtemp' : 'tempoff'] = [c.level, lab(c, `Body temperature ${t} °C (your baseline ${b.temp})`)]; }
+  { const c = vc('sleep'), m = sleepMismatch(id); if (c.level !== 'clear') sg[c.t === 'Short sleep' ? 'sleepshort' : 'sleepoff'] = [c.level, lab(c, m ? `You reported ${m.answer.toLowerCase()} of sleep (wearable: ${m.wear} hours)` : `Sleep ${sl} hours (your baseline ${b.sleep})`)]; }
+  if (g != null) { const c = vc('glu'); if (c.level !== 'clear') sg[/low/i.test(c.t) ? 'glulow' : c.t === 'High glucose' ? 'gluhigh' : 'gluoff'] = [c.level, lab(c, `Glucose ${g} mg/dL (your baseline ${b.glu})`)]; }
   { const mx = Math.max(v.cabin, v.pco2), ct = co2Tier(mx); if (ct.lvl !== 'clear') sg.co2 = [ct.lvl, `CO₂ ${mx} mmHg (${ct.tier.toLowerCase()} tier)`]; }
   if (S.scenario[id] === 'storm') sg.rad = ['urgent', 'Solar storm warning'];
   else if (v.rad >= T.rad.high) sg.rad = ['urgent', `Radiation ${v.rad} mSv/day`]; else if (v.rad >= radPlan(S.env[id]).v * T.rad.factor) sg.rad = ['review', `Radiation ${v.rad} mSv/day (planned ${radPlan(S.env[id]).v})`];
@@ -1388,7 +1433,7 @@ function sensorSignals(id){
   return sg;
 }
 const SYM_TAG = {Headache:'headache', Dizziness:'dizzy', 'x-faint':'dizzy', Fatigue:'fatigue', 's-focus':'focus', Nausea:'nausea', 's-vomit':'nausea', 's-cough':'cough', 'r-dustlung':'cough', 's-throat':'throat', 's-nose':'throat', 's-eyes':'eyes', 's-dust':'eyes', eyes:'vision', 'r-vision':'vision', 'x-vision':'vision', 'x-breath':'breath', chest:'chest', 'x-chest':'chest', 's-stress':'anxiety', 's-thirst':'thirst', 'x-neuro':'confusion', 's-neck':'neck', 's-ears':'ears', 'r-ear':'ears', 's-cold':'chills', 's-skin':'skin', 'Muscle discomfort':'muscle', 's-cramp':'muscle', sleep:'sleepy', mood:'lowmood', 's-low':'lowmood', 's-diarr':'stomach', 's-stomach':'stomach', 'r-heart':'palp'};
-const WATCH = {hrhigh:'dizziness, chest pain or breathlessness', bphigh:'headache or vision changes', fever:'chills, cough, sore throat or a stiff neck', lowtemp:'shivering or confusion', sleepshort:'tiredness or poor focus', glulow:'shakiness, dizziness or confusion', co2:'headache, dizziness or trouble focusing', rad:'nausea, tiredness or skin redness', o2low:'headache, dizziness or confusion', o2high:'any smell of burning', press:'ear pain, dizziness or breathlessness', tox:'coughing, eye irritation or breathlessness', pm:'coughing or eye irritation', water:'stomach upset or diarrhoea', noise:'ringing ears or headache', lowfluid:'thirst, headache or dizziness'};
+const WATCH = {hrlow:'dizziness or feeling faint', bplow:'dizziness or feeling faint', tempoff:'chills or feeling unwell', sleepoff:'tiredness or poor focus', gluhigh:'thirst or tiredness', gluoff:'shakiness or tiredness', hrhigh:'dizziness, chest pain or breathlessness', bphigh:'headache or vision changes', fever:'chills, cough, sore throat or a stiff neck', lowtemp:'shivering or confusion', sleepshort:'tiredness or poor focus', glulow:'shakiness, dizziness or confusion', co2:'headache, dizziness or trouble focusing', rad:'nausea, tiredness or skin redness', o2low:'headache, dizziness or confusion', o2high:'any smell of burning', press:'ear pain, dizziness or breathlessness', tox:'coughing, eye irritation or breathlessness', pm:'coughing or eye irritation', water:'stomach upset or diarrhoea', noise:'ringing ears or headache', lowfluid:'thirst, headache or dizziness'};
 const COMBOS = [
   [['co2'],['headache','dizzy','focus','fatigue','breath'],'urgent','Your symptoms are probably linked to the high CO₂ reading',['Move to a well-ventilated area now and follow the approved CO₂ procedure.','Recheck how you feel about 30 minutes after CO₂ returns to normal.','Contact the medical officer if your symptoms continue once the air is back to normal.']],
   [['o2low'],['headache','dizzy','confusion','breath','fatigue'],'urgent','Low oxygen with symptoms — treat this as an emergency',['Put on your emergency mask or portable oxygen now.','Alert the crew and follow the low-oxygen procedure.','Contact the medical officer once you are on oxygen.']],
@@ -1438,10 +1483,12 @@ function assess(id){
     palp: !sg.hrhigh ? 'Your latest heart-rate reading is within your usual range — repeat it while you feel the racing.' : '',
     stomach: !sg.water ? 'Water-quality testing is normal.' : ''
   };
-  const symptomOnly = syms.filter(k => !usedK.has(k)).map(k => ({level: CARE(k).level, label: CARE(k).title, reassure: R[SYM_TAG[k]] || ''}));
+  const RULE_KEYS = ['multi','manyunwell'], NOT_SYMPTOM = ['multi','manyunwell','urgent','severe','sleep','mood','readings'];
+  const rules = syms.filter(k => RULE_KEYS.includes(k)).map(k => ({level: CARE(k).level, label: CARE(k).title}));
+  const symptomOnly = syms.filter(k => !usedK.has(k) && !RULE_KEYS.includes(k)).map(k => ({level: CARE(k).level, label: CARE(k).title, reassure: R[SYM_TAG[k]] || ''}));
   const rank = x => RANK[x] ?? 0;
-  const lv = Math.max(-1, ...combos.map(c => rank(c.level)), ...sensorOnly.map(x => rank(x.level)), ...symptomOnly.map(x => rank(x.level)));
-  return {level: lv < 0 ? 'clear' : LEVELS[lv], combos, sensorOnly, symptomOnly, nS: Object.keys(sg).length, nY: syms.length};
+  const lv = Math.max(-1, ...combos.map(c => rank(c.level)), ...sensorOnly.map(x => rank(x.level)), ...symptomOnly.map(x => rank(x.level)), ...rules.map(x => rank(x.level)));
+  return {level: lv < 0 ? 'clear' : LEVELS[lv], combos, sensorOnly, symptomOnly, rules, nS: Object.keys(sg).length, nY: syms.filter(k => !NOT_SYMPTOM.includes(k)).length};
 }
 function assessmentCard(id, opts = {}){
   const a = assess(id), who = opts.mo ? CREW[id].name + '’s' : 'your';
@@ -1461,7 +1508,7 @@ function assessmentCard(id, opts = {}){
     <div class="note ${B[0]}">${icon(B[1], 16)}<span><b>${B[2]}.</b> ${B[3]}</span></div>
     ${combos ? `<h3 class="as-h">Connected findings</h3><p class="small muted">CrewPulse found sensor readings and symptoms that are likely linked.</p>${combos}` : ''}
     ${sens ? `<h3 class="as-h">Sensor readings</h3>${sens}` : ''}
-    ${syms ? `<h3 class="as-h">${opts.mo ? 'Reported symptoms' : 'Your symptoms'}</h3>${syms}` : ''}
+    ${syms || a.rules.length ? `<h3 class="as-h">${opts.mo ? 'Reported symptoms' : 'Your symptoms'}</h3>${a.rules.map(r => `<p class="small" style="margin:4px 0 8px">${lvPill(r.level)} <b>${esc(r.label)}:</b> ${r.level === 'urgent' ? 'together these need the medical officer now.' : 'together these should be checked by the medical officer today.'}</p>`).join('')}${syms}` : ''}
     ${a.level === 'urgent' && !opts.mo ? `<div class="row" style="margin-top:14px"><button class="btn btn-help btn-sm" data-act="modal" data-v="help">${icon('phone', 16)} Call for Help</button><button class="btn btn-ghost btn-sm" data-act="modal" data-v="contact">Contact Medical Officer</button></div>` : ''}
     ${opts.noLinks || a.level === 'clear' ? '' : `<p class="small muted" style="margin-top:12px">Detailed steps for each reading and symptom are in “What should I do?”${opts.mo ? '' : ' on the Health Support page'}. Links between readings and symptoms are demonstration rules.</p>`}
   </section>`;
@@ -1471,25 +1518,30 @@ function assessmentCard(id, opts = {}){
    Thresholds are demonstration values; real ones would be set by mission personnel. */
 function ruleAlerts(id){
   const b = CREW[id].base, e = ENVS[S.env[id]], o = S.sim[id], T0 = S.simTime[id] || NOW, out = [];
-  const add = (level, title, info, steps, area) => out.push({level, title, time:T0, info, quality:'Sensor reading · entered in the Sensor Simulator', steps, area, rule:true});
-  if (o.hr != null) {
-    if (o.hr >= T.hr.high || o.hr <= T.hr.low) add('red','Heart rate outside safe range',`Heart rate ${o.hr} bpm. Personal baseline: ${b.hr} bpm.`,['Stop activity and sit or anchor yourself.','Contact the medical officer now.','Use Call for Help if you feel faint, have chest pain or are short of breath.'],'chest');
-    else if (Math.abs(o.hr - b.hr) > b.hr * T.hr.pct / 100) add(takes(id, 'hr') && o.hr > b.hr ? 'red' : 'amber', takes(id, 'hr') && o.hr > b.hr ? 'Fast heart rate despite your heart-rate medicine' : 'Unusual heart-rate reading',`Heart rate ${o.hr} bpm. Personal baseline: ${b.hr} bpm.${takes(id, 'hr') ? ' You take a heart-rate-lowering medicine, so a change like this matters more — tell the medical officer now.' : ''}`,['Rest quietly for five minutes.','Check that the sensor is fitted correctly.','Repeat the measurement. If it still differs from your baseline, contact the medical officer.'],'chest');
+  const add = (level, title, info, steps, area, mk) => out.push({level, title, time: mk && isMeasured(id, mk) ? S.measured[id][MKEY(mk)].time : T0, info, quality: mk && isMeasured(id, mk) ? 'Measured by you' : 'Sensor reading · entered in the Sensor Simulator', steps, area, rule:true});
+  const ttl = (name, c) => /blood pressure|heart rate|fever|temperature|glucose|sleep/i.test(c.t) ? c.t : `${name}: ${c.t.charAt(0).toLowerCase() + c.t.slice(1)}`;
+  if (o.hr != null) { const c = classify(id, 'hr');
+    if (c.k === 'red' && c.s === 'Unsafe') add('red', ttl('Heart rate', c),`Heart rate ${o.hr} bpm. Personal baseline: ${b.hr} bpm.`,['Stop activity and sit or anchor yourself.','Contact the medical officer now.','Use Call for Help if you feel faint, have chest pain or are short of breath.'],'chest','hr');
+    else if (c.k !== 'ok') add(c.k, ttl('Heart rate', c),`Heart rate ${o.hr} bpm. Personal baseline: ${b.hr} bpm.${takes(id, 'hr') ? ' You take a heart-rate-lowering medicine, so a change like this matters more — tell the medical officer now.' : ''}`,['Rest quietly for five minutes.','Check that the sensor is fitted correctly.','Repeat the measurement. If it still differs from your baseline, contact the medical officer.'],'chest','hr');
   }
   if (o.sys != null || o.dia != null) {
-    const sy = cur(id,'sys'), di = cur(id,'dia');
-    if (sy >= T.bp.sysHigh || di >= T.bp.diaHigh) add('red','Very high blood pressure',`Blood pressure ${sy}/${di} mmHg. Personal baseline: ${b.sys}/${b.dia} mmHg.`,['Rest and contact the medical officer now.','Use Call for Help if you have a severe headache, chest pain or vision changes.'],'chest');
-    else if (Math.abs(sy - b.sys) > T.bp.sys || Math.abs(di - b.dia) > T.bp.dia) add('amber','Blood pressure outside your usual range',`Blood pressure ${sy}/${di} mmHg. Personal baseline: ${b.sys}/${b.dia} mmHg.`,['Sit still for five minutes and repeat the measurement.','Check the cuff size and position.','Contact the medical officer if it stays outside your usual range.'],'chest');
+    const sy = cur(id,'sys'), di = cur(id,'dia'), c = classify(id, 'bp');
+    if (c.k === 'red') add('red', ttl('Blood pressure', c),`Blood pressure ${sy}/${di} mmHg. Personal baseline: ${b.sys}/${b.dia} mmHg.`,['Rest and contact the medical officer now.','Use Call for Help if you have a severe headache, chest pain or vision changes.'],'chest','bp');
+    else if (c.k !== 'ok') add('amber', ttl('Blood pressure', c),`Blood pressure ${sy}/${di} mmHg. Personal baseline: ${b.sys}/${b.dia} mmHg.`,['Sit still for five minutes and repeat the measurement.','Check the cuff size and position.','Contact the medical officer if it stays outside your usual range.'],'chest','bp');
   }
-  if (o.temp != null) {
-    if (o.temp >= T.temp.high) add('red','High fever',`Body temperature ${o.temp} °C.`,['Rest, drink fluids and contact the medical officer now.','Use Call for Help if you feel confused or very unwell.'],'whole');
-    else if (o.temp >= T.temp.fever) add('amber','Fever',`Body temperature ${o.temp} °C.`,['Rest and drink fluids.','Recheck your temperature in an hour.',`Contact the medical officer if it reaches ${T.temp.high} °C or you feel very unwell.`],'whole');
-    else if (o.temp <= T.temp.low) add('amber','Low body temperature',`Body temperature ${o.temp} °C.`,['Add warm layers and have a warm drink.','Check the cabin temperature.','Contact the medical officer if you are shivering uncontrollably or feel confused.'],'whole');
+  if (o.temp != null) { const c = classify(id, 'temp');
+    if (c.t === 'High fever') add('red', c.t,`Body temperature ${o.temp} °C.`,['Rest, drink fluids and contact the medical officer now.','Use Call for Help if you feel confused or very unwell.'],'whole','temp');
+    else if (c.t === 'Fever') add('amber', c.t,`Body temperature ${o.temp} °C.`,['Rest and drink fluids.','Recheck your temperature in an hour.',`Contact the medical officer if it reaches ${T.temp.high} °C or you feel very unwell.`],'whole','temp');
+    else if (c.t === 'Low body temperature') add('amber', c.t,`Body temperature ${o.temp} °C.`,['Add warm layers and have a warm drink.','Check the cabin temperature.','Contact the medical officer if you are shivering uncontrollably or feel confused.'],'whole','temp');
+    else if (c.k !== 'ok') add('amber', ttl('Temperature', c),`Body temperature ${o.temp} °C. Personal baseline: ${b.temp} °C.`,['Rest and drink fluids.','Recheck your temperature in an hour.',`Contact the medical officer if it reaches ${T.temp.fever} °C or you feel unwell.`],'head','temp');
   }
-  if (o.sleep != null && o.sleep < T.sleep.short) add('amber','Short sleep',`Sleep last night: ${o.sleep} hours. Personal baseline: ${b.sleep} hours.`,SELFCARE.sleep.steps.concat(['Avoid safety-critical tasks if you feel drowsy, and tell your commander.']),'whole');
-  if (o.glu != null) {
-    if (o.glu < T.glu.low) add(takes(id, 'glu') ? 'red' : 'amber','Low glucose (simulated)',`Glucose ${o.glu} mg/dL. Low below ${T.glu.low} mg/dL.`,[...(takes(id, 'glu') ? ['You take glucose-lowering medicine: follow the low-glucose plan from your medical officer and tell them now.'] : []), 'Eat or drink something with sugar now.','Recheck in 15 minutes.','Contact the medical officer if it stays low or you feel shaky or confused.'],'abdomen');
-    else if (o.glu > T.glu.high) add('amber','High glucose (simulated)',`Glucose ${o.glu} mg/dL. High above ${T.glu.high} mg/dL.`,['Drink water.','Recheck before your next meal.','Contact the medical officer if it stays high.'],'abdomen');
+  if (o.sleep != null) { const c = classify(id, 'sleep', o.sleep);
+    if (c.k !== 'ok') add('amber', ttl('Sleep', c),`Sleep last night: ${o.sleep} hours. Personal baseline: ${b.sleep} hours.`,SELFCARE.sleep.steps.concat(['Avoid safety-critical tasks if you feel drowsy, and tell your commander.']),'whole');
+  }
+  if (o.glu != null) { const c = classify(id, 'glu'), mg = (S.measured[id] || {}).glu, eat = mg && mg.eaten ? ` Eaten in the last 2 hours: ${mg.eaten}.` : '';
+    if (c.t === 'Very low glucose' || c.t === 'Low glucose') add(c.k, c.t,`Glucose ${o.glu} mg/dL. Low below ${T.glu.low} mg/dL${c.t === 'Very low glucose' ? '; very low below 54 mg/dL' : ''}.${eat}`,[...(c.k === 'red' ? ['Eat or drink something with sugar now, then contact the medical officer now.'] : []), ...(takes(id, 'glu') ? ['You take glucose-lowering medicine: follow the low-glucose plan from your medical officer and tell them now.'] : []), 'Eat or drink something with sugar now.','Recheck in 15 minutes.','Contact the medical officer if it stays low or you feel shaky or confused.'],'abdomen','glu');
+    else if (c.t === 'High glucose') add('amber', c.t,`Glucose ${o.glu} mg/dL. High above ${T.glu.high} mg/dL.${eat}`,['Drink water.','Recheck before your next meal.','Contact the medical officer if it stays high.'],'abdomen','glu');
+    else if (c.k !== 'ok') add('amber', ttl('Glucose', c),`Glucose ${o.glu} mg/dL. Personal baseline: ${b.glu} mg/dL.${eat}`,['Recheck before your next meal.','Contact the medical officer if it stays outside your usual range.'],'abdomen','glu');
   }
   const co2Steps = ['Follow the approved environmental procedure for elevated CO₂.','Move to a well-ventilated area if instructed.','Report any headache or breathlessness.'];
   const ev = envVals(id);
@@ -1532,14 +1584,17 @@ function alerts(id){
 }
 const outstanding = id => alerts(id).filter(a => !a.resolved && !a.advisory).length;
 const AREA_KEYS = {head:['temp'], chest:['hr','sys','dia'], abdomen:['glu'], whole:['sleep']};
+const AREA_VKEYS = {head:['temp'], chest:['hr','bp'], abdomen:['glu'], whole:['sleep','temp']};
 function areaStatus(id, a){
-  const hits = alerts(id).filter(x => !x.resolved && x.area === a);
+  const all = alerts(id).filter(x => !x.resolved && x.area === a), hits = all.filter(x => !x.rule);
+  const vit = (AREA_VKEYS[a] || []).map(k => classify(id, k)), vr = vit.find(c => c.k === 'red'), va = vit.find(c => c.k === 'amber');
+  if (!hits.some(x => x.level === 'red') && vr) return {k:'red', t: vr.t};
   if (hits.some(x => x.level === 'red')) return {k:'red', t: hits.some(x => x.level === 'red' && x.quality === 'Self-reported') ? 'Reported concern — urgent' : 'Urgent reading'};
   const ct = S.concerns[id].filter(c => c.area === a).map(c => c.care && CARE(c.care) ? CARE(c.care).title : null).filter(Boolean);
   if (ct.length && assess(id).combos.some(c => c.level === 'urgent' && c.symptoms.some(t => ct.includes(t)))) return {k:'red', t:'Linked to an urgent reading'};
   if (hits.length) return {k:'amber', t: S.concerns[id].some(c => c.area === a) ? 'Reported concern' : 'Information to review'};
-  const off = (AREA_KEYS[a] || []).filter(k => cmp(id, k).k === 'amber');
-  if (off.length) return {k:'amber', t:'Reading outside your usual range'};
+  if (va) return {k:'amber', t: va.t};
+  if (all.length) return {k:'amber', t:'Information to review'};
   if (id === 'C' && a === 'eyes') return {k:'unavail', t:'Information unavailable'};
   return {k:'normal', t:'Within your usual range'};
 }
@@ -1548,7 +1603,7 @@ function areaReading(id, a){
     case 'head': return ['Temperature', `${cur(id,'temp').toFixed(1)} °C`];
     case 'eyes': return id === 'C' ? null : ['Last vision check-in', `No change reported · ${fmtD(DATES[N-4])}`];
     case 'chest': return ['Heart rate', `${cur(id,'hr')} bpm`];
-    case 'abdomen': return ['Glucose (simulated)', `${cur(id,'glu')} mg/dL`];
+    case 'abdomen': return [isMeasured(id, 'glu') ? 'Glucose' : 'Glucose (simulated)', `${cur(id,'glu')} mg/dL`];
     case 'neck': return ['Last neck and posture check-in', `No concerns reported · ${fmtD(DATES[N-2])}`];
     case 'shoulders': return ['Exercise logged today', CREW[id].exercise];
     case 'arms': return ['Exercise logged today', CREW[id].exercise];
@@ -1605,7 +1660,7 @@ function notifications(){
   const ids = staff() ? ['A','B','C'] : [S.user];
   ids.forEach(id => {
     const pre = staff() ? `${CREW[id].name}: ` : '', go = staff() ? 'mo:' + id : 'support';
-    alerts(id).filter(a => !a.resolved).forEach(a => (a.advisory ? reminders : alertsL).push({level:a.level, kind: a.advisory ? 'Advisory' : null, title: pre + a.title, sub:`${fmtT(a.time)} · simulated`, go}));
+    alerts(id).filter(a => !a.resolved).forEach(a => (a.advisory ? reminders : alertsL).push({level:a.level, kind: a.advisory ? 'Advisory' : null, title: pre + a.title, sub:`${fmtT(a.time)} · ${a.quality === 'Measured by you' ? 'measured by you' : 'simulated'}`, go}));
     if (!staff()) { const dm = medsDue(id); if (dm.length) reminders.push({level:'info', kind:'Medicine', title:`Take your ${MED_OPTIONS[dm[0].key].name.split(' (')[0].toLowerCase()}`, sub:`${dm[0].schedule} · as prescribed`, go:'dashboard'}); }
     if (!staff()) { const md = MEASURES.filter(([k]) => !(S.measured[id] || {})[k]).length; if (md) reminders.push({level:'info', title:`${md} measurement${md > 1 ? 's' : ''} due today`, sub:'Part of your morning routine', go:'dashboard'}); }
     if (S.role === 'mo' && id === 'A' && S.thPending && thArrived()) reminders.push({level:'info', kind:'Update', title:'Threshold update from the flight surgeon arrived', sub:'Confirm it on the Alert thresholds page', go:'thresholds'});
@@ -1623,12 +1678,19 @@ const realTag = (t = 'Real data') => `<span class="tag real" title="Value or sou
 const greet = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; };
 
 function niceStep(r){ const e = Math.pow(10, Math.floor(Math.log10(r))); const f = r / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * e; }
-function scaleFor(vals, extra = []){
+function scaleFor(vals, extra = [], fix){
+  if (fix) {   // [axisMin, axisMax, validMin, validMax]: fixed range, widened only by valid values
+    const ok = vals.filter(x => x != null && x >= fix[2] && x <= fix[3]);
+    let lo = Math.max(0, Math.min(fix[0], ...ok)), hi = Math.max(fix[1], ...ok);
+    const st = niceStep((hi - lo) / 4); lo = Math.max(0, Math.floor(lo / st) * st); hi = Math.ceil(hi / st) * st;
+    const ticks = []; for (let t = lo; t <= hi + 1e-9; t += st) ticks.push(+t.toFixed(2));
+    return {ymin:lo, ymax:hi, ticks};
+  }
   const v = vals.concat(extra).filter(x => x != null);
   let lo = Math.min(...v), hi = Math.max(...v);
   const p = (hi - lo) * .15 || 1; lo -= p; hi += p;
   const st = niceStep((hi - lo) / 4);
-  lo = Math.floor(lo / st) * st; hi = Math.ceil(hi / st) * st;
+  lo = Math.max(0, Math.floor(lo / st) * st); hi = Math.ceil(hi / st) * st;
   const ticks = []; for (let t = lo; t <= hi + 1e-9; t += st) ticks.push(+t.toFixed(2));
   return {ymin:lo, ymax:hi, ticks};
 }
@@ -1687,7 +1749,7 @@ function loginView(){
     <form class="card login-card" id="loginForm" novalidate>
       <h1>Welcome to CrewPulse</h1>
       <p class="muted" style="margin-top:4px">Your health companion during space missions.</p>
-      <button type="button" class="guest-cta" data-act="guest"><span class="guest-ic">${icon('rocket', 22)}</span><span class="guest-tx"><b>Continue as guest</b><span>No account needed. Explore with a sample astronaut profile.</span></span><span class="guest-arrow">${icon('arrow', 20)}</span></button>
+      <button type="button" class="guest-cta" data-act="guest" aria-label="Continue as guest"><span class="guest-ic">${icon('rocket', 22)}</span><span class="guest-tx"><b>Continue as guest</b><span>No account needed. Explore with a sample astronaut profile.</span></span><span class="guest-arrow">${icon('arrow', 20)}</span></button>
       <div class="or"><span>or log in</span></div>
       <div class="seg" style="width:100%" role="group" aria-label="Sign-in path">
         <button type="button" style="flex:1" class="${S.loginRole === 'crew' ? 'on' : ''}" data-act="loginRole" data-v="crew">Crew member</button>
@@ -1725,7 +1787,7 @@ function shell(content){
       <div class="brand">${logo(34)}<div><b>CrewPulse</b><small>Astronaut Health Monitoring</small></div></div>
       <nav aria-label="Main navigation">${groups.map(([g, items]) => `<div class="nav-sep">${g}</div>${items.map(([p, ic, l]) => {
         const active = S.page === p || (p === 'crew' && S.page === 'moProfile');
-        return `<button class="nav-btn ${active ? 'active' : ''}" data-act="${p === 'reset' ? 'modal' : 'go'}" data-v="${p}" ${active ? 'aria-current="page"' : ''}>${icon(ic, 19)}<span>${l}</span>${p === 'support' && n ? `<span class="nav-badge" aria-label="${n} outstanding">${n}</span>` : ''}</button>`;
+        return `<button class="nav-btn ${active ? 'active' : ''}" data-act="${p === 'reset' ? 'modal' : 'go'}" data-v="${p}" aria-label="${l}" ${active ? 'aria-current="page"' : ''}>${icon(ic, 19)}<span>${l}</span>${p === 'support' && n ? `<span class="nav-badge" aria-label="${n} outstanding">${n}</span>` : ''}</button>`;
       }).join('')}`).join('')}</nav>
       <div class="side-foot">
         <div class="side-user">${avatar(S.user, 34)}<div><b>${who.name}</b><small>${who.crewId}</small></div><button class="side-logout" data-act="logout" title="Log out" aria-label="Log out">${icon('logout', 18)}</button></div>
@@ -1734,13 +1796,13 @@ function shell(content){
     </aside>
     <div class="main">${header()}<main class="workspace" id="main">${guestBanner()}${banners()}${content}</main></div>
   </div>
-  ${isMO ? '' : `<button class="btn btn-help fab" data-act="modal" data-v="help">${icon('phone', 18)} Call for Help</button>`}`;
+  ${isMO ? '' : `<button class="btn btn-help fab" data-act="modal" data-v="help" aria-label="Call for Help">${icon('phone', 18)} Call for Help</button>`}`;
 }
 
 function header(){
   const isStaff = staff(), N = notifications(), who = isStaff ? staffWho() : CREW[S.user];
   const title = isStaff ? `<div class="h-page"><div class="h-crumb">${S.role === 'fs' ? 'Ground · Mission Control' : 'Onboard medical officer'}</div><div class="h-title">${S.role === 'fs' ? 'Flight surgeon view' : 'Crew health access'}</div></div>`
-    : `<div class="h-page"><div class="h-crumb">${phase(S.user)} · ${destName()}</div><div class="h-title">Mission Day ${CREW[S.user].day}</div></div>`;
+    : `<div class="h-page"><div class="h-crumb">${ENVS[S.env[S.user]].name} · ${destName()}</div><div class="h-title">Mission Day ${CREW[S.user].day}</div></div>`;
   const dest = `<div class="seg seg-sm" role="group" aria-label="Destination">${['moon','mars'].map(k => `<button class="${S.dest === k ? 'on' : ''}" data-act="dest" data-v="${k}" aria-pressed="${S.dest === k}">${k === 'moon' ? 'Moon' : 'Mars'}</button>`).join('')}</div>`;
   const env = isStaff ? '' : `<div class="env-sel"><span class="eyebrow">Environment</span><div class="seg" role="group" aria-label="Mission environment">${Object.entries(ENVS).map(([k, e]) => `<button class="${S.env[S.user] === k ? 'on' : ''}" data-act="env" data-v="${k}" aria-pressed="${S.env[S.user] === k}">${e.short}</button>`).join('')}</div></div>`;
   const simBtn = isStaff ? '' : `<button class="btn ${S.page === 'sim' ? 'btn-secondary' : 'btn-ghost'} btn-sm" data-act="go" data-v="sim" title="Sensor Simulator" aria-label="Sensor Simulator">${icon('sliders', 16)}<span class="sim-lbl">Sensor Simulator</span></button>`;
@@ -1758,7 +1820,7 @@ function header(){
         ${S.notifOpen ? `<div class="notif"><h3>Alerts <span class="small muted">(${nA})</span></h3>${nA ? N.alerts.map(item).join('') : `<p class="small muted" style="padding:2px 10px 8px">No open alerts.</p>`}
           <h3 style="margin-top:6px">Reminders <span class="small muted">(${nR})</span></h3>${nR ? N.reminders.map(item).join('') : `<p class="small muted" style="padding:2px 10px 8px">No reminders.</p>`}</div>` : ''}
       </div>
-      <button class="who" data-act="go" data-v="${isStaff ? 'crew' : 'profile'}">${avatar(isStaff ? S.user : S.user, 38)}<span class="who-txt"><b>${who.name}</b><small>${who.crewId}</small></span></button>
+      <button class="who" data-act="go" data-v="${isStaff ? 'crew' : 'profile'}" aria-label="${isStaff ? 'Crew overview' : 'Profile'}: ${who.name}">${avatar(isStaff ? S.user : S.user, 38)}<span class="who-txt"><b>${who.name}</b><small>${who.crewId}</small></span></button>
     </div></header>`;
 }
 
@@ -1775,7 +1837,7 @@ function indSpark(id, key, k, hint){
 }
 function indCard(id, key){
   const ts = `${fmtT(SYNC)}`;
-  let label, ic, val, unit = '', st, extra = '', tag = sim(), word = false;
+  let label, ic, val, unit = '', st, extra = '', tag = sim(), word = false, selfRep = false;
   switch (key) {
     case 'hr': label = 'Heart rate'; ic = 'heart'; val = cur(id,'hr'); unit = 'bpm'; st = cmp(id,'hr'); break;
     case 'bp': label = 'Blood pressure'; ic = 'drop'; val = `${cur(id,'sys')}/${cur(id,'dia')}`; unit = 'mmHg'; st = cmp(id,'sys'); break;
@@ -1784,8 +1846,9 @@ function indCard(id, key){
       label = 'Sleep'; ic = 'moon'; const s = cur(id,'sleep');
       if (s == null) { val = '—'; st = {k:'grey', t:'Unavailable — last synced 2 days ago'}; }
       else { val = s; unit = 'hours'; st = cmp(id,'sleep'); }
+      const sm = sleepMismatch(id); if (sm) { val = sm.answer; unit = ''; word = true; selfRep = true; st = classify(id, 'sleep'); }
       const last = DATA[id].sleep.slice(-7);
-      extra = `<svg viewBox="0 0 140 34" width="140" height="34" role="img" aria-label="Sleep, last 7 nights">${last.map((v, i) => v == null
+      extra = `${sm ? `<div class="small muted">Wearable: ${sm.wear} hours</div>` : ''}<svg viewBox="0 0 140 34" width="140" height="34" role="img" aria-label="Sleep, last 7 nights">${last.map((v, i) => v == null
         ? `<rect x="${i * 20 + 2}" y="22" width="14" height="10" rx="3" fill="none" stroke="#9AA3B5" stroke-dasharray="2 2"/>`
         : `<rect x="${i * 20 + 2}" y="${32 - v / 10 * 32}" width="14" height="${v / 10 * 32}" rx="3" fill="${i === 6 ? '#6A759B' : '#B9D4F1'}"><title>${fmtD(DATES[N - 7 + i])}: ${v} h</title></rect>`).join('')}</svg><div class="small muted" style="margin-top:-4px">Last 7 nights</div>`;
       break;
@@ -1802,7 +1865,7 @@ function indCard(id, key){
     <div class="ind-top"><span class="ind-ic">${icon(ic, 18)}</span><span class="ind-label">${label}</span>${infoBtn(key)}</div>
     <div class="ind-val"><b class="${word ? 'word' : ''}">${esc(val)}</b><span>${unit}</span></div>${['hr','bp','temp','glu'].includes(key) ? indSpark(id, key === 'bp' ? 'sys' : key, st.k, HINT[key] || label) : HINT[key] ? `<div class="hint">${HINT[key]}</div>` : ''}
     ${extra}${medNote(id, key)}<div>${pill(st.k, st.t)}</div>
-    <div class="ind-foot">${(S.measured[id] || {})[key] ? sim('Measured by you') : S.sim[id][key === 'bp' ? 'sys' : key] != null || (key === 'bp' && S.sim[id].dia != null) ? sim('From Sensor Simulator') : tag}<span class="small muted">${icon('clock', 13)} ${S.sim[id][key === 'bp' ? 'sys' : key] != null ? fmtT(S.simTime[id]) : ts}</span></div>
+    <div class="ind-foot">${selfRep ? sim('Self-reported') : (S.measured[id] || {})[key] ? sim('Measured by you') : S.sim[id][key === 'bp' ? 'sys' : key] != null || (key === 'bp' && S.sim[id].dia != null) ? sim('From Sensor Simulator') : tag}<span class="small muted">${icon('clock', 13)} ${key === 'mood' && S.today[id] ? fmtT(S.today[id].time) : selfRep ? fmtT(S.today[id].time) : (S.measured[id] || {})[key] ? fmtT(S.measured[id][key].time) : S.sim[id][key === 'bp' ? 'sys' : key] != null ? fmtT(S.simTime[id]) : ts}</span></div>
   </div>`;
 }
 function spaceWeatherCard(id){
@@ -1902,7 +1965,7 @@ function screenings(id){
 }
 const overdueCount = id => screenings(id).filter(x => x.left < 0).length;
 function screeningTable(id, canMark){
-  return `<table class="tbl"><thead><tr><th>Check</th><th>What it looks for</th><th>Every</th><th>Last done</th><th>Status</th>${canMark ? '<th></th>' : ''}</tr></thead><tbody>${screenings(id).map(x => `<tr><td><b>${x.t}</b></td><td class="small">${x.why}</td><td class="small">${x.every} days</td><td class="small">${x.since === 0 ? 'Today' : fmtD(new Date(NOW.getTime() - x.since * 864e5))}</td><td>${pill(x.st[0], x.st[1])}</td>${canMark ? `<td>${x.since === 0 ? '' : `<button class="btn btn-ghost btn-sm" data-act="screenDone" data-v="${x.k}">Mark done</button>`}</td>` : ''}</tr>`).join('')}</tbody></table>
+  return `<div class="tbl-scroll"><table class="tbl"><thead><tr><th>Check</th><th>What it looks for</th><th>Every</th><th>Last done</th><th>Status</th>${canMark ? '<th></th>' : ''}</tr></thead><tbody>${screenings(id).map(x => `<tr><td><b>${x.t}</b></td><td class="small">${x.why}</td><td class="small">${x.every} days</td><td class="small">${x.since === 0 ? 'Today' : fmtD(new Date(NOW.getTime() - x.since * 864e5))}</td><td>${pill(x.st[0], x.st[1])}</td>${canMark ? `<td>${x.since === 0 ? '' : `<button class="btn btn-ghost btn-sm" data-act="screenDone" data-v="${x.k}">Mark done</button>`}</td>` : ''}</tr>`).join('')}</tbody></table></div>
   <p class="small muted" style="margin-top:10px">These long-term risks cannot be detected by a symptom check-in, so CrewPulse reminds the crew when each check is due. Schedule is an example for the prototype.</p>`;
 }
 
@@ -2099,11 +2162,24 @@ function tourCard(){
     <h3 style="margin:6px 0 4px">${title}</h3><p class="small">${text}</p>
     <div class="row" style="margin-top:12px">${S.tour ? `<button class="btn btn-ghost btn-sm" data-act="tourStep" data-v="${S.tour - 1}">Back</button>` : ''}<span class="spacer"></span><button class="btn btn-primary btn-sm" data-act="${last ? 'tourEnd' : 'tourStep'}" data-v="${S.tour + 1}">${last ? 'Finish' : 'Next'}</button></div></div>`;
 }
+function placeTour(el, fixedTarget){
+  const box = document.querySelector('.tour'); if (!box) return;
+  const m = 16, vh = window.innerHeight, hdr = document.querySelector('.header'), top0 = hdr && getComputedStyle(hdr).position !== 'static' ? hdr.getBoundingClientRect().bottom : 0, bh = box.offsetHeight;
+  if (!fixedTarget) {   // bring the element and the box into view together
+    let r = el.getBoundingClientRect(); const need = r.height + bh + 2 * m, avail = vh - top0;
+    window.scrollBy(0, r.top - (need <= avail ? top0 + (avail - need) / 2 : top0 + m));
+  }
+  const r = el.getBoundingClientRect(); let t;
+  if (vh - r.bottom >= bh + 2 * m) t = r.bottom + m;          // below
+  else if (r.top - top0 >= bh + 2 * m) t = r.top - bh - m;     // above
+  else t = Math.max(top0 + m, vh - bh - m);
+  box.style.top = t + 'px'; box.style.bottom = 'auto';
+}
 function tourFocus(){
   document.querySelectorAll('.tour-hl').forEach(x => x.classList.remove('tour-hl'));
   if (S.tour == null) return;
   const k = TOUR[S.tour][0], hb = document.querySelector('.hdr-help'), el = k === 'fab' ? (hb && hb.offsetParent ? hb : document.querySelector('.fab')) : document.querySelector(`[data-tour="${k}"]`);
-  if (el) { el.classList.add('tour-hl'); if (k !== 'fab') el.scrollIntoView({block:'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'}); }
+  if (el) { el.classList.add('tour-hl'); placeTour(el, k === 'fab'); }
 }
 const STORM_STEPS = ['Forecast','Shelter','Headcount','Peak','All-clear'];
 function banners(){
@@ -2148,7 +2224,7 @@ function summaryStrip(id){
   const sk = streak(id);
   const tile = (lbl, val, sub, vis, go) => `<button class="kpi" data-act="go" data-v="${go}" aria-label="${lbl}: ${val}. ${sub}">${vis}<span class="kpi-tx"><span class="kpi-l">${lbl}</span><span class="kpi-v">${val}</span><span class="kpi-s">${sub}</span></span></button>`;
   return `<div class="kpis">
-    <button class="kpi kpi-hero st-${ov[0]}" data-act="go" data-v="support" aria-label="Overall status: ${ov[1]}"><span class="hero-badge">${icon(ov[2], 30)}</span><span class="kpi-tx"><span class="kpi-l">Overall status</span><span class="kpi-v">${ov[1]}</span><span class="kpi-s">From your readings and symptoms</span></span></button>
+    <button class="kpi kpi-hero st-${ov[0]}" data-act="go" data-v="support" aria-label="Overall status: ${ov[1]}"><span class="hero-badge">${icon(ov[2], 30)}</span><span class="kpi-tx"><span class="kpi-l">Overall status</span><span class="kpi-v">${ov[1]}</span><span class="kpi-s">${a.level === 'clear' && notifications().reminders.length ? `All clear · ${notifications().reminders.length} reminder${notifications().reminders.length === 1 ? '' : 's'}` : 'From your readings and symptoms'}</span></span></button>
     ${tile('Open alerts', al ? `${al} open` : 'None', al ? 'See what to do' : 'Nothing to act on', `<span class="num-badge ${al ? 'amber' : 'ok'}">${al}</span>`, 'support')}
     ${tile('Daily check', t ? 'Complete' : 'Not done', t ? `Submitted ${fmtT(t.time)}` : 'Takes about 2 minutes', ring(t ? 1 : 0, t ? 'ok' : 'info', t ? '✓' : '0/1', 50), 'check')}
     ${tile('Measurements', md ? `${md} due` : 'Done', md ? 'Part of your morning routine' : 'All recorded today', ring(done / tot, md ? 'info' : 'ok', `${done}/${tot}`, 50), 'dashboard')}
@@ -2167,7 +2243,7 @@ function todoList(id){
   if (sc === 'storm') t.push(['red','rad','Go to the radiation shelter now.','A solar particle event is expected within 45 minutes (demo value).','support','View']);
   if (overdueCount(id)) t.push(['amber','clock',`${overdueCount(id)} health screening${overdueCount(id) > 1 ? 's are' : ' is'} overdue.`,'Long-term checks such as eye exams and fitness tests keep you safe on long missions.','profile','View']);
   if (S.concerns[id].some(c => c.level === 'red')) t.push(['red','phone','Contact the medical officer.','You reported an urgent concern.','support','Contact']);
-  else if (S.concerns[id].length) t.push(['amber','ok','Try the self-care steps for what you reported.',`You reported ${S.concerns[id].length} concern${S.concerns[id].length > 1 ? 's' : ''} today. Contact the medical officer only if a warning sign appears.`,'support','See steps']);
+  else if (S.concerns[id].length && asm.level !== 'urgent' && asm.level !== 'review') t.push(['amber','ok','Try the self-care steps for what you reported.',`You reported ${S.concerns[id].length} concern${S.concerns[id].length > 1 ? 's' : ''} today. Contact the medical officer only if a warning sign appears.`,'support','See steps']);
   if (!t.length) return `<div class="note ok">${icon('ok',18)}<span>Your example dashboard has no outstanding tasks. Continue your scheduled activities.</span></div>`;
   const C = {info:['#E5EEF9','var(--navy)'], amber:['var(--amber-bg)','var(--amber)'], red:['var(--red-bg)','var(--red)']};
   return t.map(([lv, ic, h, sub, go, cta]) => `<div class="todo"><span class="todo-ic" style="background:${C[lv][0]};color:${C[lv][1]}">${icon(ic, 17)}</span><div style="flex:1"><b>${h}</b><div class="small muted">${sub}</div></div><button class="btn btn-ghost btn-sm" data-act="go" data-v="${go}">${cta}</button></div>`).join('');
@@ -2190,7 +2266,7 @@ function dashboardView(){
   const envSt = hazardStatus(id, 'closed'), hzBad = HAZARDS.filter(([k]) => ['amber','red'].includes(hazardStatus(id, k)[0])).length;
   const ms = missions(id), n = nutrition(id);
   return `
-  <div class="welcome">${avatar(id, 56)}<div><h1>${greet()}, ${c.name}</h1><div class="meta">Mission Day ${c.day} · ${e.name} · ${phase(id)}</div></div>
+  <div class="welcome">${avatar(id, 56)}<div><h1>${greet()}, ${c.name}</h1><div class="meta">Mission Day ${c.day} · ${e.name} · ${destName()} · ${phase(id)}</div></div>
     <div class="spacer"></div><span class="small muted">${icon('refresh', 14)} Last data sync ${fmtT(SYNC)} · simulated</span></div>
 
   ${(() => { const c = assess(id).combos[0]; return c ? `<div class="banner ${c.level === 'urgent' ? 'red' : c.level === 'review' ? 'amber' : 'info'}">${icon('body', 18)}<div style="flex:1"><b>CrewPulse connected two signals:</b> ${esc(c.title)}. <span class="muted">Sensor: ${esc(c.sensors.join(', '))} + you reported: ${esc(c.symptoms.join(', '))}.</span></div><button class="btn btn-ghost btn-sm" data-act="go" data-v="support">See what to do</button></div>` : ''; })()}
@@ -2326,7 +2402,7 @@ function areaPanel(id){
         : `<div class="yn"><button class="btn btn-ghost" data-act="bmans" data-v="no">${icon('ok', 18)} No</button><button class="btn btn-secondary" data-act="bmans" data-v="yes">${icon('warn', 18)} Yes, report it</button></div>`}
     </div>
     ${staff() ? '' : areaHelp(id, a)}
-    <div class="read-tile">${r ? `<div><div class="eyebrow">${r[0]}</div><div class="read-big">${r[1]}</div></div><div class="read-meta">${sim('Simulated')}<span class="small muted">${fmtT(SYNC)}</span></div>`
+    <div class="read-tile">${r ? `<div><div class="eyebrow">${r[0]}</div><div class="read-big">${r[1]}</div></div><div class="read-meta">${srcTag(id, {head:'temp', chest:'hr', abdomen:'glu'}[a] || '', 'Simulated')}<span class="small muted">${fmtT(isMeasured(id, {head:'temp', chest:'hr', abdomen:'glu'}[a] || '') ? S.measured[id][{head:'temp', chest:'hr', abdomen:'glu'}[a]].time : SYNC)}</span></div>`
       : `<div><div class="eyebrow">Latest reading</div><div class="read-big muted" style="font-size:16px">${icon('info', 16)} No vision check-in recorded yet</div></div>`}</div>
     <div class="ind-chips" aria-label="Related indicators">${A.ind.map(x => `<span class="tag">${x}</span>`).join('')}</div>
     ${areaTrends(id, a)}
@@ -2366,7 +2442,7 @@ function trendParts(id, key, range){
   const sl = k => series(id, k).slice(-range);
   if (key === 'bp') {
     const s1 = sl('sys'), s2 = sl('dia'); const sc = scaleFor(s1.concat(s2));
-    const bs = [b.sys - 8, b.sys + 8], bd2 = [b.dia - 8, b.dia + 8]; const sc2 = scaleFor(s1.concat(s2), bs.concat(bd2)); o = {series:[{d:s1, color:'#6A759B'}, {d:s2, color:'#6A759B', dash:'5 4', width:2}], ...sc2, band: bs, band2: bd2, label:'Blood pressure history', unit:'mmHg'};
+    const bs = [b.sys - 8, b.sys + 8], bd2 = [b.dia - 8, b.dia + 8]; const sc2 = scaleFor(s1.concat(s2), bs.concat(bd2), [40, 200, 40, 250]); const clip = d => d.map(x => x == null ? x : Math.min(Math.max(x, sc2.ymin), sc2.ymax)); o = {series:[{d:clip(s1), color:'#6A759B'}, {d:clip(s2), color:'#6A759B', dash:'5 4', width:2}], ...sc2, band: bs, band2: bd2, label:'Blood pressure history', unit:'mmHg'};
     title = 'Blood pressure'; unit = 'mmHg'; now = `${cur(id,'sys')}/${cur(id,'dia')}`;
     legend = `<span><i class="ln" style="background:#6A759B"></i>Systolic</span><span><i class="ln" style="background:repeating-linear-gradient(90deg,#6A759B 0 5px,transparent 5px 8px)"></i>Diastolic</span><span><i class="ln" style="background:#B9D4F1;height:10px"></i>Personal reference ranges</span>`;
   } else if (key === 'mood') {
@@ -2380,9 +2456,9 @@ function trendParts(id, key, range){
     title = 'Exercise logged'; unit = 'minutes a day'; now = s[s.length - 1];
     legend = `<span><i class="ln" style="background:#6A759B"></i>Exercise (simulated)</span><span><i class="ln" style="background:#B9D4F1;height:10px"></i>Personal exercise plan (demo)</span>`;
   } else {
-    const s = sl(key), M = {hr:['Heart rate','bpm'], temp:['Temperature','°C'], sleep:['Sleep','hours'], glu:['Glucose (simulated)','mg/dL']}[key];
-    const sc = scaleFor(s, band[key]);
-    o = {series:[{d:s, color:'#6A759B'}], ...sc, band:band[key], label:M[0] + ' history', unit:M[1], fmt: key === 'temp' ? (v => (+v).toFixed(1)) : undefined};
+    const s = sl(key), M = {hr:['Heart rate','bpm'], temp:['Temperature','°C'], sleep:['Sleep','hours'], glu:[isMeasured(id, 'glu') ? 'Glucose' : 'Glucose (simulated)','mg/dL']}[key];
+    const sc = scaleFor(s, band[key], {hr:[40, 140, 20, 250], temp:[34, 42, 30, 45], glu:[0, 300, 20, 600]}[key]);
+    o = {series:[{d:s.map(x => x == null ? x : Math.min(Math.max(x, sc.ymin), sc.ymax)), color:'#6A759B'}], ...sc, band:band[key], label:M[0] + ' history', unit:M[1], fmt: key === 'temp' ? (v => (+v).toFixed(1)) : undefined};
     title = M[0]; unit = M[1]; const v = cur(id, key); now = v == null ? 'Unavailable' : (key === 'temp' ? v.toFixed(1) : v);
     legend = `<span><i class="ln" style="background:#6A759B"></i>${M[0]}</span><span><i class="ln" style="background:#B9D4F1;height:10px"></i>Personal reference range</span>`;
   }
@@ -2393,7 +2469,7 @@ function trendCard(id, key, range, compact){
   const {o, title, unit, now, legend} = trendParts(id, key, range);
   if (compact) o.h = 160;
   return `<div class="card"><div class="chart-head"><div><h3>${title} ${infoBtn(key)}</h3><div class="small muted">${unit} · last ${range} days</div></div>
-    <div class="val"><b>${now}</b>${sim(key === 'glu' ? 'Simulated value' : key === 'mood' ? 'Self-reported' : 'Simulated data')}</div></div>
+    <div class="val"><b>${now}</b>${key === 'mood' ? sim('Self-reported') : srcTag(id, key, key === 'glu' ? 'Simulated value' : 'Simulated data')}</div></div>
     ${chart(o)}<div class="chart-legend">${legend}</div></div>`;
 }
 function outsideDays(id, key, range){
@@ -2434,6 +2510,7 @@ function dayStatus(id, i){
   DS_KEYS.forEach(([k, l, u]) => {
     const v = i === N - 1 ? cur(id, k) : DATA[id][k][i];
     if (v == null) { missing = true; return; }
+    if (i === N - 1) { const c = classify(id, k); if (c.k === 'red') { lvl = 2; flags.push(`${l}: ${c.t}`); } else if (c.k === 'amber') { lvl = Math.max(lvl, 1); flags.push(`${l}: ${c.t}`); } return; }
     const d = v - b[k], t = TOL(id, k);
     if (Math.abs(d) > 2 * t) { lvl = 2; flags.push(`${l} ${v} ${u}, well ${d > 0 ? 'above' : 'below'} usual`); }
     else if (Math.abs(d) > t) { lvl = Math.max(lvl, 1); flags.push(`${l} ${v} ${u}, ${d > 0 ? 'above' : 'below'} usual`); }
@@ -2445,12 +2522,13 @@ function historyEvents(id){
   const c = CREW[id];
   return [
     [c.day - 2, 'Weekly private medical conference with flight surgeon', 'Routine'],
-    [c.day - 9, 'Periodic fitness evaluation completed', 'Routine'],
-    [c.day - 16, id === 'B' ? 'Sleep schedule adjusted after shift change' : 'Vision and eye health check-in — no change', 'Routine'],
+    [c.day - scrSince(id, 'fitness'), 'Periodic fitness evaluation completed', 'Routine'],
+    [id === 'B' ? c.day - 16 : c.day - scrSince(id, 'eye'), id === 'B' ? 'Sleep schedule adjusted after shift change' : 'Vision and eye health check-in — no change', 'Routine'],
     [c.day - 30, 'Personal baselines reviewed by medical officer', 'Baseline'],
     [1, 'Pre-flight personal baselines recorded', 'Baseline']
-  ].filter(e => e[0] > 0);
+  ].filter(e => e[0] > 0).sort((x, y) => y[0] - x[0]);
 }
+const scrSince = (id, k) => S.screenDone[id + ':' + k] ? 0 : SCREEN_LAST[id][k];   // one stored date per screening
 function missionLanes(id){
   const c = CREW[id], W = 1060, LW = 190, R = 18, LH = 40;
   const st = streak(id), al = alerts(id).filter(a => !a.resolved && !a.advisory);
@@ -2504,12 +2582,13 @@ function spark(id, key, r){
 }
 function crewGlance(range){
   const r0 = range, LV = {clear:['ok','All clear'], self:['ok','Self-care advised'], review:['amber','Needs attention today'], urgent:['red','Act now']};
-  const rows = [['hr','Heart rate','bpm'], ['sys','Systolic BP','mmHg'], ['sleep','Sleep','h'], ['glu','Glucose','mg/dL']];
+  const rows = [['hr','Heart rate','bpm'], ['bp','Blood pressure','mmHg'], ['temp','Temperature','°C'], ['sleep','Sleep','h'], ['glu','Glucose','mg/dL']];
+  const CGC = {amber:'var(--amber)', red:'var(--red)'};
   const card = id => {
     const c = CREW[id], r = Math.min(r0, c.day), lv = LV[assess(id).level], st = dayStrip(id, r, 300, 26, r > 45 ? 1 : 2);
-    const rowHtml = rows.map(([k, l, u]) => { const v = cur(id, k), cm = cmp(id, k);
-      return `<div class="cg-row"><span class="muted">${l}</span>${spark(id, k, r)}<span class="v">${v == null ? '<span class="muted">—</span>' : v}<small class="${cm.k === 'amber' ? '' : 'muted'}" style="${cm.k === 'amber' ? 'color:var(--amber)' : ''}">${v == null ? 'Unavailable' : cm.k === 'amber' ? (v > c.base[k] ? '▲ above' : '▼ below') : u}</small></span></div>`; }).join('');
-    return `<div class="card cg-card"><div class="cg-head">${avatar(id, 40)}<div style="flex:1;min-width:0"><b>${c.name}</b><div class="small muted">${ENVS[S.env[id]].name} · Day ${c.day}</div></div>${pill(lv[0], lv[1])}</div>
+    const rowHtml = rows.map(([k, l, u]) => { const v = k === 'bp' ? (cur(id, 'sys') == null ? null : `${cur(id, 'sys')}/${cur(id, 'dia')}`) : k === 'temp' && cur(id, k) != null ? cur(id, k).toFixed(1) : cur(id, k), cm = classify(id, k), sm = k === 'sleep' ? sleepMismatch(id) : null, flag = cm.k === 'amber' || cm.k === 'red';
+      return `<div class="cg-row"><span class="muted">${l}</span>${spark(id, k === 'bp' ? 'sys' : k, r)}<span class="v">${v == null ? '<span class="muted">—</span>' : v}<small class="${flag ? '' : 'muted'}" style="${flag ? 'color:' + CGC[cm.k] : ''}" title="${esc(cm.t)}">${v == null ? 'Unavailable' : flag ? cm.s : u}</small></span>${flag ? `<span class="small" style="grid-column:1/-1;color:${CGC[cm.k]};font-weight:600;margin-top:-4px">${esc(cm.t)}</span>` : ''}${sm ? `<span class="small" style="grid-column:1/-1;color:var(--amber)">Reported: ${esc(sm.answer.toLowerCase())} · wearable ${sm.wear} h</span>` : ''}</div>`; }).join('');
+    return `<div class="card cg-card"><div class="cg-head">${avatar(id, 40)}<div style="flex:1;min-width:0"><b>${c.name}</b><div class="small muted">${ENVS[S.env[id]].name} · Day ${c.day}</div>${S.env[id] === 'base' || S.env[id] === 'rover' ? `<div class="small" style="color:var(--amber);font-weight:600">Delayed – received from planetary base</div>` : ''}</div>${pill(lv[0], lv[1])}</div>
       <div><div class="cg-count"><span><b>${st.cnt.ok} of ${r}</b> days in range</span><span class="muted">${st.cnt.amber + st.cnt.red ? `${st.cnt.amber + st.cnt.red} flagged` : ''}${st.cnt.grey ? ` · ${st.cnt.grey} missing` : ''}</span></div>
         <svg viewBox="0 0 300 26" width="100%" height="26" preserveAspectRatio="none" role="img" aria-label="${c.name}: ${st.cnt.ok} days in range, ${st.cnt.amber} to review, ${st.cnt.red} urgent, ${st.cnt.grey} missing over ${r} days">${st.s}</svg></div>
       <div class="cg-body"><div class="cg-fig">${miniBody(id)}<div class="small muted">Body map</div></div><div class="cg-rows">${rowHtml}<p class="small muted" style="margin-top:2px">Blue band = personal usual range</p></div></div>
@@ -2537,12 +2616,12 @@ function healthTimeline(id, range, staffView){
 }
 function baselineTable(id, withDiff){
   const b = CREW[id].base;
-  const rows = [['Resting heart rate','hr','bpm', b.hr], ['Blood pressure (systolic)','sys','mmHg', b.sys], ['Blood pressure (diastolic)','dia','mmHg', b.dia], ['Temperature','temp','°C', b.temp], ['Sleep','sleep','hours', b.sleep], ['Glucose (simulated)','glu','mg/dL', b.glu]];
-  return `<table class="tbl"><thead><tr><th>Measurement</th><th>Personal baseline</th><th>Latest example</th>${withDiff ? '<th>Difference</th>' : ''}<th>Status</th></tr></thead><tbody>${rows.map(([l, k, u, bv]) => {
+  const rows = [['Resting heart rate','hr','bpm', b.hr], ['Blood pressure (systolic)','sys','mmHg', b.sys], ['Blood pressure (diastolic)','dia','mmHg', b.dia], ['Temperature','temp','°C', b.temp], ['Sleep','sleep','hours', b.sleep], [isMeasured(id, 'glu') ? 'Glucose' : 'Glucose (simulated)','glu','mg/dL', b.glu]];
+  return `<div class="tbl-scroll"><table class="tbl"><thead><tr><th>Measurement</th><th>Personal baseline</th><th>Latest example</th>${withDiff ? '<th>Difference</th>' : ''}<th>Status</th></tr></thead><tbody>${rows.map(([l, k, u, bv]) => {
     const v = cur(id, k), st = cmp(id, k);
     const d = v == null ? '—' : (v - bv > 0 ? '+' : '') + (+(v - bv).toFixed(1));
-    return `<tr><td><b>${l}</b></td><td>${bv} ${u}</td><td>${v == null ? '<span class="muted">Unavailable</span>' : `${v} ${u}`}</td>${withDiff ? `<td>${d}${v == null ? '' : ' ' + u}</td>` : ''}<td>${pill(st.k, st.t)}</td></tr>`;
-  }).join('')}</tbody></table>`;
+    return `<tr><td><b>${l}</b></td><td>${bv} ${u}</td><td>${v == null ? '<span class="muted">Unavailable</span>' : `${v} ${u}`}${isMeasured(id, k) ? `<div class="small muted">Measured by you</div>` : ''}</td>${withDiff ? `<td>${d}${v == null ? '' : ' ' + u}</td>` : ''}<td>${pill(st.k, st.t)}</td></tr>`;
+  }).join('')}</tbody></table></div>`;
 }
 function trendsView(){
   const id = S.user, c = CREW[id];
@@ -2571,11 +2650,16 @@ function careKeys(t){
   if (t.otherSev === 'severe') k.push('severe');
   (t.symptoms || []).filter(s => s !== 'No symptoms' && s !== 'Other').forEach(s => k.push(s));
   if (t.sleep === SLEEPS[0] || t.sleep === SLEEPS[1]) k.push('sleep');
-  if (t.mood === 'Not good') k.push('mood');
   if (t.readings === 'wrong') k.push('readings');
   return k;
 }
-function nextAction(t){
+function nextAction(t, id){
+  const na = nextAction0(t), lv = id ? assess(id).level : null;
+  if (lv === 'urgent' && na[0] !== 'red') return ['red','Contact the medical officer now — the combined assessment below says act now. Your check-in has been shared with them (simulated).'];
+  if (lv === 'review' && (na[0] === 'info' || na[0] === 'ok')) return ['amber','Contact the medical officer today — the combined assessment below needs attention (not an emergency). Try the self-care steps below in the meantime.'];
+  return na;
+}
+function nextAction0(t){
   const k = careKeys(t), oa = t.otherRes;
   if (oa && oa.level === 'urgent') return ['red','Contact the medical officer now about the symptom you described. Your check-in has been shared with them (simulated).'];
   if (k.includes('urgent') || k.includes('manyunwell') || k.includes('severe')) return ['red','Contact the medical officer now. Your check-in has been shared with them (simulated).'];
@@ -2591,7 +2675,7 @@ function checkView(){
   let body = '';
   if (d.step === 1) {
     body = `<h2 style="font-size:24px">Start your daily check</h2>
-      <p class="muted" style="margin-top:6px">This takes about two minutes. You’ll answer three short questions and review today’s example readings.</p>
+      <p class="muted" style="margin-top:6px">This takes about two minutes. You’ll answer four short questions and review today’s example readings.</p>
       ${t ? `<div class="note ok" style="margin-top:16px">${icon('ok', 16)}<span>You already checked in today at ${fmtT(t.time)}. Starting again will replace today’s answers.</span></div>` : ''}
       <div class="dc-foot"><button class="btn btn-primary btn-lg" data-act="dcStep" data-v="2">${t ? 'Check in again' : 'Start your daily check'} ${icon('arrow', 18)}</button>${t ? `<button class="btn btn-ghost btn-lg" data-act="dcSummary">View today’s summary</button>` : ''}</div>`;
   } else if (d.step === 2) {
@@ -2604,9 +2688,10 @@ function checkView(){
       ${d.symptoms.includes('Other') ? `<label class="field">Describe the other symptom in your own words<input id="dcOther" value="${esc(d.other)}" placeholder="For example: my ears feel blocked and there is ringing"><span class="field-hint">CrewPulse checks your description against a library of common symptoms and warning signs.</span></label>
         <div class="field" style="margin-top:16px">How bad is it?<div class="sev-row" role="radiogroup">${SEVS.map(([k, l]) => `<button class="opt ${d.otherSev === k ? 'on' : ''}" role="radio" aria-checked="${d.otherSev === k}" data-act="dcSev" data-v="${k}"><span class="radio"></span>${l}</button>`).join('')}</div></div>` : ''}`;
   } else if (d.step === 5) {
-    const R = [['Heart rate', `${cur(id,'hr')} bpm`], ['Blood pressure', `${cur(id,'sys')}/${cur(id,'dia')} mmHg`], ['Temperature', `${cur(id,'temp').toFixed(1)} °C`], ['Sleep (wearable)', cur(id,'sleep') == null ? 'Unavailable — not synced' : `${cur(id,'sleep')} hours`], ['Glucose', `${cur(id,'glu')} mg/dL (simulated)`]];
+    const R = [['Heart rate', `${cur(id,'hr')} bpm`], ['Blood pressure', `${cur(id,'sys')}/${cur(id,'dia')} mmHg`], ['Temperature', `${cur(id,'temp').toFixed(1)} °C`], ['Sleep (wearable)', cur(id,'sleep') == null ? 'Unavailable — not synced' : `${cur(id,'sleep')} hours`], ['Glucose', `${cur(id,'glu')} mg/dL${isMeasured(id, 'glu') ? ' (measured by you)' : ' (simulated)'}`]];
+    const sm5 = sleepMismatch(id, d);
     body = `<h2 style="font-size:22px">Review available example readings</h2><p class="muted small" style="margin-top:4px">Collected at ${fmtT(SYNC)} · simulated data</p>
-      <dl class="sum-list">${R.map(([l, v]) => `<div class="sum-row"><dt>${l}</dt><dd><b>${v}</b></dd></div>`).join('')}</dl>
+      <dl class="sum-list">${R.map(([l, v]) => `<div class="sum-row"><dt>${l}</dt><dd><b>${v}</b>${l === 'Sleep (wearable)' && sm5 ? `<div class="note amber" style="margin-top:6px">${icon('warn', 16)}<span>${sleepNote(sm5)}</span></div>` : ''}</dd></div>`).join('')}</dl>
       <p class="q" style="margin-top:16px">Do these readings look right to you?</p>
       <div class="opt-list" role="radiogroup"><button class="opt ${d.readings === 'ok' ? 'on' : ''}" role="radio" aria-checked="${d.readings === 'ok'}" data-act="dcRead" data-v="ok"><span class="radio"></span>Yes, they look right</button>
       <button class="opt ${d.readings === 'wrong' ? 'on' : ''}" role="radio" aria-checked="${d.readings === 'wrong'}" data-act="dcRead" data-v="wrong"><span class="radio"></span>Something seems wrong (for example, a loose sensor)</button></div>
@@ -2623,7 +2708,7 @@ function checkView(){
   } else {
     const s = t || d;
     const reported = (s.symptoms || []).filter(x => x !== 'No symptoms');
-    const na = nextAction(s);
+    const na = nextAction(s, id);
     body = `<div class="row" style="gap:16px"><div class="done-ic">${icon('ok', 34)}</div><div><h2 style="font-size:24px">Check-in completed</h2><p class="muted">${fmtFull(s.time)}</p></div></div>
       <dl class="sum-list" style="margin-top:18px">
         <div class="sum-row"><dt>Answers submitted</dt><dd>Feeling: <b>${esc(s.mood)}</b> · Sleep: <b>${esc(s.sleep)}</b> · Readings: <b>${s.readings === 'ok' ? 'look right' : 'flagged for a repeat'}</b></dd></div>
@@ -2722,7 +2807,7 @@ function checkinHistory(id){
     rows.push({date:DATES[i], mood: missed ? '—' : MOODS[5 - DATA[id].mood[i]], sleep: missed ? '—' : sl == null ? 'Unavailable' : sl < 4 ? SLEEPS[0] : sl < 6 ? SLEEPS[1] : sl <= 8 ? SLEEPS[2] : SLEEPS[3], sym: missed ? '—' : v < .65 ? 'No symptoms' : v < .82 ? 'Fatigue' : v < .92 ? 'Headache' : 'Muscle discomfort', st: missed ? 'Missed' : 'Complete'});
   }
   const sk = {Complete:'ok', Pending:'grey', Missed:'amber'};
-  return `<table class="tbl"><thead><tr><th>Date</th><th>Feeling</th><th>Sleep</th><th>Symptoms</th><th>Status</th></tr></thead><tbody>${rows.map(x => `<tr><td>${fmtD(x.date)}</td><td>${esc(x.mood)}</td><td>${esc(x.sleep)}</td><td>${esc(x.sym)}</td><td>${pill(sk[x.st], x.st)}</td></tr>`).join('')}</tbody></table>`;
+  return `<div class="tbl-scroll"><table class="tbl"><thead><tr><th>Date</th><th>Feeling</th><th>Sleep</th><th>Symptoms</th><th>Status</th></tr></thead><tbody>${rows.map(x => `<tr><td>${fmtD(x.date)}</td><td>${esc(x.mood)}</td><td>${esc(x.sleep)}</td><td>${esc(x.sym)}</td><td>${pill(sk[x.st], x.st)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 function healthHistory(id){
   const ev = historyEvents(id);
@@ -3189,7 +3274,7 @@ function thresholdsView(){
 function moCrewView(){
   const ids = ['A','B','C'];
   const done = ids.filter(i => S.today[i]).length, al = ids.reduce((n, i) => n + outstanding(i), 0);
-  const fsNote = S.role === 'fs' ? `<div class="note info" style="margin-bottom:18px">${icon('orbit', 16)}<span><b>You are on the ground at Mission Control.</b> Crew data reaches you after the communication delay (${destName()}: ${fmtDelay(delaySec('base'))} each way from the base). The onboard medical officer sees it in real time and acts first.</span></div>` : `<div class="note info" style="margin-bottom:18px">${icon('users', 16)}<span><b>Onboard medical officer.</b> You see crew data in real time. The ground flight surgeon receives it after the communication delay and owns the alert thresholds.</span></div>`;
+  const fsNote = S.role === 'fs' ? `<div class="note info" style="margin-bottom:18px">${icon('orbit', 16)}<span><b>You are on the ground at Mission Control.</b> Crew data reaches you after the communication delay (${destName()}: ${fmtDelay(delaySec('base'))} each way from the base). The onboard medical officer sees it in real time and acts first.</span></div>` : `<div class="note info" style="margin-bottom:18px">${icon('users', 16)}<span><b>Onboard medical officer.</b> You see crew on your vehicle in real time. Data from other locations arrives after the communication delay.</span></div>`;
   return `<div class="page-head"><div><h1>Crew Health Overview</h1><p class="muted">${S.role === 'fs' ? 'Ground flight surgeon view' : 'Onboard medical officer view'}. Select a crew member to open their individual profile.</p></div></div>${fsNote}
   <div class="grid g5" style="margin-bottom:22px">
     <div class="card stat"><span class="lbl">Mission environment</span><span class="txt">Multi-environment</span><span class="small muted">${ids.map(i => ENVS[S.env[i]].short).join(' · ')}</span></div>
@@ -3200,14 +3285,14 @@ function moCrewView(){
   </div>
   ${crewGlance(S.range)}
   <section class="card" style="padding:8px 8px 4px">
-    <table class="tbl"><thead><tr><th>Crew ID</th><th>Crew member</th><th>Environment</th><th>Check-in</th><th>Data status</th><th>Alerts</th><th>Screenings</th><th>${S.role === 'fs' ? 'Link to Earth' : 'Last sync'}</th><th></th></tr></thead><tbody>
+    <div class="tbl-scroll"><table class="tbl"><thead><tr><th>Crew ID</th><th>Crew member</th><th>Environment</th><th>Check-in</th><th>Data status</th><th>Alerts</th><th>Screenings</th><th>${S.role === 'fs' ? 'Link to Earth' : 'Last sync'}</th><th></th></tr></thead><tbody>
     ${ids.map(i => { const c = CREW[i], ds = dataStatus(i), n = outstanding(i);
       return `<tr class="click" data-act="moOpen" data-v="${i}" tabindex="0"><td style="white-space:nowrap"><b>${c.crewId}</b></td><td><span class="row" style="gap:10px;flex-wrap:nowrap;min-width:200px">${avatar(i, 32)}<span><b>${c.name}</b><div class="small muted">${c.role}</div></span></span></td>
       <td>${ENVS[S.env[i]].name}</td><td>${S.today[i] ? pill('ok', 'Complete') : pill('grey', 'Pending')}</td><td>${pill(ds.k, ds.t)}</td>
       <td>${n ? pill(alerts(i).some(a => !a.resolved && a.level === 'red') ? 'red' : 'amber', `${n} open`) : '<span class="muted small">None</span>'}</td>
       <td>${overdueCount(i) ? pill('amber', `${overdueCount(i)} overdue`) : '<span class="muted small">Up to date</span>'}</td>
       <td class="small" style="white-space:nowrap">${S.role === 'fs' ? `${fmtDelay(delaySec(S.env[i]))} delay${S.queue.filter(q => q.crew === i && qStatus(q) !== 'delivered').length ? ` · ${S.queue.filter(q => q.crew === i && qStatus(q) !== 'delivered').length} in transit` : ''}${S.link.up ? '' : ' · link down'}` : i === 'C' ? 'Wearable: 2 days ago' : fmtT(SYNC)}</td><td>${icon('arrow', 18)}</td></tr>`; }).join('')}
-    </tbody></table>
+    </tbody></table></div>
   </section>
   <section class="card" style="margin-top:18px"><div class="section-head"><h2>Medical kit: expiry and storage</h2>${MEDKIT.some(x => x[2] <= 30 || x[3] !== 'ok') ? pill('amber', 'Needs attention') : pill('ok', 'All good')}</div>
     <table class="tbl"><thead><tr><th>Item</th><th>Kit</th><th>Expires in</th><th>Storage</th></tr></thead><tbody>${MEDKIT.map(([n, k, d, st]) => `<tr><td><b>${n}</b></td><td class="small">${k}</td><td>${d <= 30 ? pill('amber', `${d} days — plan replacement`) : `${d} days`}</td><td>${st === 'ok' ? pill('ok', 'Within range') : pill('amber', 'Temperature above range for 3 h — check potency')}</td></tr>`).join('')}</tbody></table>
@@ -3318,17 +3403,18 @@ function modalView(){
   } else if (m.type === 'measure') {
     const I = INFO[m.key], id = S.user, b = CREW[id].base;
     if (m.stage === 'done') {
-      const st = cmp(id, m.key === 'bp' ? 'sys' : m.key), st2 = m.key === 'bp' ? cmp(id, 'dia') : st, worst = st.k === 'amber' || st2.k === 'amber' ? (st.k === 'amber' ? st : st2) : st;
+      const worst = classify(id, m.key);
       inner = `${x}<div class="done-ic" style="margin-bottom:12px">${icon('ok', 32)}</div><h2>${I.title} recorded</h2><p style="margin-top:6px">${m.text} at ${fmtT(new Date())}.</p>
         <div style="margin-top:12px">${pill(worst.k, worst.t)}</div>
-        ${worst.k === 'amber' ? `<div class="note amber" style="margin-top:12px">${icon('warn', 16)}<span>${I.act}</span></div>` : ''}
+        ${worst.k === 'amber' || worst.k === 'red' ? `<div class="note ${worst.k}" style="margin-top:12px">${icon(worst.k === 'red' ? 'alert' : 'warn', 16)}<span>${I.act}</span></div>` : ''}
         <p class="small muted" style="margin-top:12px">CrewPulse has added this reading to your dashboard, trends and combined assessment.</p>
-        <div class="row" style="margin-top:16px"><button class="btn btn-primary" data-act="close">Done</button><button class="btn btn-ghost" data-act="go" data-v="support">See assessment</button></div>`;
+        <div class="row" style="margin-top:16px"><button class="btn btn-primary" data-act="close">Done</button><button class="btn btn-ghost" data-act="seeAssess">See assessment</button></div>`;
     } else {
-      const fld = (fid, lab, ph) => `<label class="sim-field"><span class="sim-label">${lab}</span><span class="sim-input"><input type="number" id="${fid}" placeholder="${ph}"><span>${I.unit}</span></span></label>`;
+      const fld = (fid, lab, ph) => `<label class="sim-field"><span class="sim-label">${lab}</span><span class="sim-input"><input type="number" id="${fid}" placeholder="${ph}"><span>${I.unit}</span></span><span class="err m-err" id="${fid}Err" role="alert"></span></label>`;
       inner = `${x}<div class="eyebrow">Measurement</div><h2>${I.title}</h2>
         <h3 class="as-h">How to measure</h3><ol class="steps-list">${I.how.map(h => `<li>${h}</li>`).join('')}</ol>
         <div class="sim-grid" style="margin-top:16px">${m.key === 'bp' ? fld('mSys', 'Systolic (top number)', `Your baseline ${b.sys}`) + fld('mDia', 'Diastolic (bottom number)', `Your baseline ${b.dia}`) : fld('mVal', 'Your reading', m.key === 'temp' ? 'e.g. 36.8' : `Your baseline ${b[m.key]}`)}</div>
+        ${m.key === 'glu' ? `<div class="field" style="margin-top:12px">Eaten in the last 2 hours?<div class="sev-row" role="radiogroup" aria-label="Eaten in the last 2 hours?">${['Yes','No'].map(x => `<button type="button" class="opt ${m.eaten === x ? 'on' : ''}" role="radio" aria-checked="${m.eaten === x}" data-act="mEaten" data-v="${x}"><span class="radio"></span>${x}</button>`).join('')}</div></div>` : ''}
         <div class="err" id="mErr"></div>
         <p class="small muted">In the real system, a connected device would send this reading automatically.</p>
         <div class="row" style="margin-top:12px"><button class="btn btn-primary" data-act="measureSave">Save reading</button><button class="btn btn-ghost" data-act="close">Cancel</button></div>`;
@@ -3503,12 +3589,35 @@ document.addEventListener('click', e => {
     case 'hazard': S.modal = {type:'hazard', key:v}; render(); break;
     case 'measure': S.modal = {type:'measure', key:v}; render(); setTimeout(() => document.querySelector('.modal input')?.focus(), 0); break;
     case 'measureSave': {
-      const k = S.modal.key, num = x => parseFloat(document.getElementById(x)?.value);
-      let text;
-      if (k === 'bp') { const a = num('mSys'), d = num('mDia'); if (isNaN(a) || isNaN(d)) { document.getElementById('mErr').textContent = 'Enter both numbers.'; break; } S.sim[id].sys = a; S.sim[id].dia = d; text = `${a}/${d} mmHg`; }
-      else { const a = num('mVal'); if (isNaN(a)) { document.getElementById('mErr').textContent = 'Enter your reading.'; break; } S.sim[id][k] = a; text = `${a} ${INFO[k].unit}`; }
-      S.simTime[id] = new Date(); S.measured[id][k] = {time:new Date(), text}; enqueue(id, `${INFO[k].title} reading`);
+      const k = S.modal.key, raw = x => (document.getElementById(x)?.value || '').trim(), num = x => raw(x) === '' ? NaN : parseFloat(raw(x));
+      const err = (fid, msg) => { const e = document.getElementById(fid + 'Err'); if (e) e.innerHTML = msg; };
+      ['mSys','mDia','mVal'].forEach(f => err(f, '')); document.getElementById('mErr').textContent = '';
+      let text, val;
+      if (k === 'bp') {
+        const a = num('mSys'), d = num('mDia'); let bad = false;
+        if (isNaN(a)) { err('mSys', 'Enter the top number.'); bad = true; } else if (a < 70 || a > 250) { err('mSys', 'The top number must be between 70 and 250 mmHg.'); bad = true; }
+        if (isNaN(d)) { err('mDia', 'Enter the bottom number.'); bad = true; } else if (d < 40 || d > 150) { err('mDia', 'The bottom number must be between 40 and 150 mmHg.'); bad = true; }
+        else if (!isNaN(a) && d >= a) { err('mDia', 'The bottom number must be lower than the top number.'); bad = true; }
+        if (bad) break;
+        S.sim[id].sys = a; S.sim[id].dia = d; text = `${a}/${d} mmHg`; val = [a, d];
+      } else {
+        const a = num('mVal');
+        if (isNaN(a)) { err('mVal', 'Enter your reading.'); break; }
+        if (k === 'temp' && (a < 30 || a > 45)) {
+          if (a >= 86 && a <= 113) { const c = (Math.round((a - 32) * 5 / 9 * 10) / 10).toFixed(1); err('mVal', `This looks like °F. Did you mean ${c} °C? <button type="button" class="btn btn-secondary btn-sm" style="margin-top:6px" data-act="mUseC" data-v="${c}">Use ${c} °C</button>`); }
+          else err('mVal', 'Enter a temperature between 30.0 and 45.0 °C.');
+          break;
+        }
+        if (k === 'glu' && (a < 20 || a > 600)) { err('mVal', 'Enter a glucose value between 20 and 600 mg/dL.'); break; }
+        S.sim[id][k] = a; text = `${a} ${INFO[k].unit}`; val = a;
+      }
+      const eaten = k === 'glu' ? S.modal.eaten || null : null;
+      if (eaten) text += ` · eaten in the last 2 hours: ${eaten}`;
+      S.simTime[id] = new Date(); S.measured[id][k] = {time:new Date(), text, v: val, eaten}; enqueue(id, `${INFO[k].title} reading`);
       S.modal = {type:'measure', key:k, stage:'done', text}; render(); break; }
+    case 'mUseC': { const el = document.getElementById('mVal'); if (el) { el.value = v; el.focus(); } const e = document.getElementById('mValErr'); if (e) e.innerHTML = ''; break; }
+    case 'mEaten': { S.modal.eaten = v; document.querySelectorAll('[data-act="mEaten"]').forEach(bt => { const on = bt.dataset.v === v; bt.classList.toggle('on', on); bt.setAttribute('aria-checked', on); }); break; }
+    case 'seeAssess': S.modal = null; go('support'); break;
     case 'fluid': S.nutri[id].fluids += +v; render(); break;
     case 'meal': S.nutri[id].meals[v] = !S.nutri[id].meals[v]; render(); break;
     case 'vitd': S.nutri[id].vitd = !S.nutri[id].vitd; render(); break;
@@ -3520,6 +3629,7 @@ document.addEventListener('click', e => {
       const tox = +document.getElementById('sim-tox').value; if (tox) o.tox = tox;
       if (document.getElementById('sim-waterq').value === 'fail') o.waterq = 'fail';
       S.sim[id] = o; S.simTime[id] = new Date(); enqueue(id, 'Sensor readings update');
+      Object.keys(S.measured[id] || {}).forEach(mk => { const m = S.measured[id][mk], now = mk === 'bp' ? [o.sys, o.dia] : o[mk]; if (m.v == null || JSON.stringify(now) !== JSON.stringify(m.v)) delete S.measured[id][mk]; });
       if (['hr','co2','dehy'].includes(S.scenario[id])) S.scenario[id] = 'none';
       S.scenario[id] = document.getElementById('sim-storm').checked ? 'storm' : (S.scenario[id] === 'storm' ? 'none' : S.scenario[id]);
       S.simMsg = `Readings sent at ${fmtT(S.simTime[id])}. ${Object.keys(o).length} value${Object.keys(o).length === 1 ? '' : 's'} differ from normal.`;
